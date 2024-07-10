@@ -9,6 +9,7 @@ import {
 import clsx from "clsx";
 
 import { colors } from "@/styles/colors";
+import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 
 type Variants = "primary" | "secondary" | "tertiary";
 

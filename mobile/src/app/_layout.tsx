@@ -1,7 +1,12 @@
 import "@/styles/global.css";
 import "@/utils/dayjsLocaleConfig";
 
-import { View, StatusBar, SafeAreaView } from "react-native";
+import {
+  View,
+  StatusBar,
+  SafeAreaView,
+  KeyboardAvoidingView,
+} from "react-native";
 import { Slot } from "expo-router";
 
 import {

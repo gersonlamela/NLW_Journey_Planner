@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Alert, Keyboard, TouchableOpacity, View } from "react-native";
+import { Alert, Keyboard, Text, TouchableOpacity, View } from "react-native";
 import { DateData } from "react-native-calendars";
 
 import { router, useLocalSearchParams } from "expo-router";
@@ -23,10 +23,15 @@ import {
   MapPin,
   Settings2,
   Calendar as IconCalendar,
+  User,
+  Mail,
 } from "lucide-react-native";
 
 import { colors } from "@/styles/colors";
 import { DatesSelected, calendarUtils } from "@/utils/calendarUtils";
+import { validateInput } from "@/utils/validateInput";
+import { participantsServer } from "@/server/participants-server";
+import { tripStorage } from "@/storage/trip";
 
 export type TripData = TripDetails & { when: string };
 
@@ -34,6 +39,7 @@ enum MODAL {
   NONE = 0,
   UPDATE_TRIP = 1,
   CALENDAR = 2,
+  CONFIRM_ATTENDANCE = 3,
 }
 
 export default function Trip() {
@@ -43,24 +49,37 @@ export default function Trip() {
   // LOADING
   const [isLoadingTrip, setIsLoadingTrip] = useState(true);
   const [isUpdatingTrip, setIsUpdatingTrip] = useState(false);
+  const [isConfirmingAttendance, setIsConfirmingAttendance] = useState(false);
 
   // DATA
   const [tripDetails, setTripDetails] = useState({} as TripData);
   const [option, setOption] = useState<"activity" | "details">("activity");
   const [destination, setDestination] = useState("");
   const [selectedDates, setSelectedDates] = useState({} as DatesSelected);
+  const [guestName, setGuestName] = useState("");
+  const [guestEmail, setGuestEmail] = useState("");
 
-  const tripId = useLocalSearchParams<{ id: string }>().id;
+  const tripParams = useLocalSearchParams<{ id: string; guest?: string }>();
+
+  function resetFields() {
+    setGuestName("");
+    setGuestEmail("");
+    setShowModal(MODAL.NONE);
+  }
 
   async function getTripDetails() {
     try {
       setIsLoadingTrip(true);
 
-      if (!tripId) {
+      if (tripParams.guest) {
+        setShowModal(MODAL.CONFIRM_ATTENDANCE);
+      }
+
+      if (!tripParams.id) {
         return router.back();
       }
 
-      const trip = await tripServer.getById(tripId);
+      const trip = await tripServer.getById(tripParams.id);
 
       const maxLengthDestination = 14;
       const destination =
@@ -88,7 +107,7 @@ export default function Trip() {
 
   async function handleUpdateTrip() {
     try {
-      if (!tripId) {
+      if (!tripParams.id) {
         return;
       }
 
@@ -102,7 +121,7 @@ export default function Trip() {
       setIsUpdatingTrip(true);
 
       await tripServer.update({
-        id: tripId,
+        id: tripParams.id,
         destination,
         starts_at: dayjs(selectedDates.startsAt.dateString).toString(),
         ends_at: dayjs(selectedDates.endsAt.dateString).toString(),
@@ -132,6 +151,63 @@ export default function Trip() {
     });
 
     setSelectedDates(dates);
+  }
+
+  async function handleConfirmAttendence() {
+    try {
+      if (!tripParams.id || !tripParams.guest) {
+        return;
+      }
+
+      if (!guestName.trim() || !guestEmail.trim()) {
+        return Alert.alert(
+          "Confirmation",
+          "Fill in your name and email to confirm trip!"
+        );
+      }
+
+      if (!validateInput.email(guestEmail.trim())) {
+        return Alert.alert("Confirmation", "Invalid email!");
+      }
+
+      setIsConfirmingAttendance(true);
+      await participantsServer.confirmTripByParticipantId({
+        participantId: tripParams.guest,
+        name: guestName,
+        email: guestEmail.trim(),
+      });
+
+      Alert.alert("Confirmation", "Trip confirmation!");
+
+      await tripStorage.save(tripParams.id);
+      resetFields();
+    } catch (error) {
+      console.log(error);
+      Alert.alert("Confirmation", "Unable to confirm");
+      setIsConfirmingAttendance(false);
+    } finally {
+      setIsConfirmingAttendance(false);
+    }
+  }
+
+  function handleRemoveTrip() {
+    try {
+      Alert.alert("Remove Trip", "Are you sure you want to remove the trip?", [
+        {
+          text: "No",
+          style: "cancel",
+        },
+        {
+          text: "Yes",
+          onPress: async () => {
+            await tripStorage.remove();
+            router.navigate("/");
+          },
+        },
+      ]);
+    } catch (error) {
+      console.log(error);
+    }
   }
 
   useEffect(() => {
@@ -219,6 +295,10 @@ export default function Trip() {
           <Button onPress={handleUpdateTrip} isLoading={isUpdatingTrip}>
             <Button.Title>Update</Button.Title>
           </Button>
+
+          <TouchableOpacity onPress={handleRemoveTrip}>
+            <Text className="text-red-400 text-center mt-6">Remove Trip</Text>
+          </TouchableOpacity>
         </View>
       </Modal>
 
@@ -237,6 +317,53 @@ export default function Trip() {
 
           <Button onPress={() => setShowModal(MODAL.UPDATE_TRIP)}>
             <Button.Title>Confirm</Button.Title>
+          </Button>
+        </View>
+      </Modal>
+
+      <Modal
+        title="Confirm presence"
+        visible={showModal === MODAL.CONFIRM_ATTENDANCE}
+      >
+        <View className="gap-4 mt-4">
+          <Text className="text-zinc-400 font-regular leading-6 my-2">
+            you have been invited to take part in a trip to
+            <Text className="font-semibold text-zinc-100">
+              {" "}
+              {tripDetails.destination}{" "}
+            </Text>
+            on the dates of
+            <Text className="font-semibold text-zinc-100">
+              {" "}
+              {dayjs(tripDetails.starts_at).date()} to{" "}
+              {dayjs(tripDetails.ends_at).date()} the{" "}
+              {dayjs(tripDetails.ends_at).format("MMMM")}. {"\n\n"}
+            </Text>
+            To confirm your presence on the trip, fill in the information below:
+          </Text>
+          <Input variant="secondary">
+            <User color={colors.zinc[400]} size={20} />
+            <Input.Field
+              placeholder="Full name"
+              value={guestName}
+              onChangeText={setGuestName}
+            />
+          </Input>
+
+          <Input variant="secondary">
+            <Mail color={colors.zinc[400]} size={20} />
+            <Input.Field
+              placeholder="E-mail"
+              value={guestEmail}
+              onChangeText={setGuestEmail}
+            />
+          </Input>
+
+          <Button
+            isLoading={isConfirmingAttendance}
+            onPress={handleConfirmAttendence}
+          >
+            <Button.Title>Confirm presence</Button.Title>
           </Button>
         </View>
       </Modal>

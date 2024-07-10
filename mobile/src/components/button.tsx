@@ -1,14 +1,13 @@
+import { createContext, useContext } from "react";
+
 import {
   Text,
   TextProps,
-  ActivityIndicator,
   TouchableOpacity,
+  ActivityIndicator,
   TouchableOpacityProps,
 } from "react-native";
-
 import clsx from "clsx";
-
-import { createContext, useContext } from "react";
 
 type Variants = "primary" | "secondary";
 
@@ -29,7 +28,7 @@ function Button({
   return (
     <TouchableOpacity
       className={clsx(
-        "h-11 flex-row items-center justify-center rounded-lg gap-2",
+        "h-11 flex-row items-center justify-center rounded-lg gap-2 px-2",
         {
           "bg-lime-300": variant === "primary",
           "bg-zinc-800": variant === "secondary",
@@ -49,6 +48,7 @@ function Button({
 
 function Title({ children }: TextProps) {
   const { variant } = useContext(ThemeContext);
+
   return (
     <Text
       className={clsx("text-base font-semibold", {
@@ -62,4 +62,5 @@ function Title({ children }: TextProps) {
 }
 
 Button.Title = Title;
+
 export { Button };
